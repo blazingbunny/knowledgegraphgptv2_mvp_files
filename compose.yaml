@@ -1,0 +1,29 @@
+services:
+  server:
+    image: node:18-alpine
+    working_dir: /srv
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    volumes:
+      - ./server:/srv
+    command: >
+      sh -c "
+        npm install &&
+        node index.js
+      "
+  client:
+    image: node:18-alpine
+    working_dir: /srv
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./client:/srv
+    command: >
+      sh -c "
+        npm install &&
+        npm start
+      "
