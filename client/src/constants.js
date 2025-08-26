@@ -1,3 +1,7 @@
+// Defaults for the (optional) endpoint selector in App.js
+export const DEFAULT_ENDPOINT_KEY = "OPENROUTER";
+export const ENV_KEYS = { OPENROUTER: "", OPENAI: "" };
+
 // client/src/constants.js
 export const LAYOUTS = {
   Simple: "FCOSE",
