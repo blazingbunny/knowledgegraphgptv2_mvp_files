@@ -14,10 +14,7 @@ import "./App.css";
 import {
   DEFAULT_PARAMS,
   LAYOUTS,
-  requestOptions,
-  ENDPOINTS,
   DEFAULT_ENDPOINT_KEY,
-  ENV_KEYS,
 } from "./constants";
 import GithubLogo from "./github-mark.png";
 import LayoutSelector from "./LayoutSelector";
@@ -31,18 +28,9 @@ function App() {
   const [option, setOptions] = useState(LAYOUTS.FCOSE);
   const [loading, setLoading] = useState(false);
 
+  // Endpoint select remains (future-proofing), even though server proxy is used.
   const [endpointKey, setEndpointKey] = useState(DEFAULT_ENDPOINT_KEY);
   const handleEndpointChange = (e) => setEndpointKey(e.target.value);
-
-  const [useManualKey, setUseManualKey] = useState(false);
-  const [key, setKey] = useState(ENV_KEYS[DEFAULT_ENDPOINT_KEY] || "");
-  const handleKeyChange = (e) => setKey(e.target.value);
-
-  useEffect(() => {
-    if (!useManualKey) {
-      setKey(ENV_KEYS[endpointKey] || "");
-    }
-  }, [endpointKey, useManualKey]);
 
   const [file, setFile] = useState("");
 
@@ -63,13 +51,6 @@ function App() {
   };
 
   const fetchGraph = () => {
-    if (!key) {
-      alert(
-        "No API key found. Either set it in your .env or enable 'Use manual API key' and paste one."
-      );
-      return;
-    }
-
     setLoading(true);
     fetch(main)
       .then((res) => res.text())
@@ -79,37 +60,25 @@ function App() {
           ...DEFAULT_PARAMS,
           messages: [{ role: "system", content: promptText }],
         };
-
-        const url = ENDPOINTS[endpointKey];
-
-        const hdrs = {
-          ...requestOptions.headers,
-          Authorization: "Bearer " + key,
-        };
-
-        if (endpointKey === "OPENROUTER") {
-          hdrs["X-Title"] = "KnowledgeGraph GPT";
-        }
-
-        return fetch(url, {
-          ...requestOptions,
-          headers: hdrs,
-          body: JSON.stringify(params),
+        return fetch("http://localhost:4000/api/llm/chat", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params }),
         });
       })
-      .then((response) => response.json())
+      .then((r) => r.json())
       .then((data) => {
         setLoading(false);
-        const text = data?.choices?.[0]?.message?.content || "";
+        if (!data?.ok) throw new Error(data?.error || "LLM proxy error");
+        const text = data.text || "";
         const result = restructureGraph(tuplesToGraph(cleanTuples(text)));
         dispatch({ type: ACTIONS.ADD_NODES_AND_EDGES, payload: result });
       })
       .catch((error) => {
         setLoading(false);
         console.log(error);
-        alert(
-          "Request failed. Verify endpoint, model, and API key (or check console)."
-        );
+        alert("Request failed. Check server API key and logs.");
       });
   };
 
@@ -127,7 +96,7 @@ function App() {
     nodes: graphState.nodes,
     edges: graphState.edges,
     layout: option,
-    prompt
+    prompt,
   });
 
   const restoreGraphContent = (content) => {
@@ -138,7 +107,7 @@ function App() {
       if (layout) setOptions(layout);
       if (p) setPrompt(p);
     } catch (e) {
-      console.error('Failed to load content', e);
+      console.error("Failed to load content", e);
     }
   };
 
@@ -152,15 +121,15 @@ function App() {
   };
 
   const onSave = async () => {
-    if (!currentFile?.id) return alert('No file open. Use New or Open.');
+    if (!currentFile?.id) return alert("No file open. Use New or Open.");
     await drive.saveDoc(currentFile.id, getGraphContent());
-    alert('Saved (new revision created)');
+    alert("Saved (new revision created)");
   };
 
   const onOpen = async () => {
     const list = await drive.listDocs();
     const pick = list.files?.[0];
-    if (!pick) return alert('No files found. Create one first.');
+    if (!pick) return alert("No files found. Create one first.");
     const { file, content } = await drive.openDoc(pick.id);
     setCurrentFile(file);
     restoreGraphContent(content);
@@ -168,16 +137,16 @@ function App() {
   };
 
   const onSaveAs = async () => {
-    if (!currentFile?.id) return alert('Open a file first.');
-    const newName = window.prompt('New name:', `copy-${currentFile.name}`) || undefined;
+    if (!currentFile?.id) return alert("Open a file first.");
+    const newName = window.prompt("New name:", `copy-${currentFile.name}`) || undefined;
     const { file } = await drive.saveAsDoc(currentFile.id, newName);
     setCurrentFile(file);
     alert(`Saved As ${file.name}`);
   };
 
   const onUndoTo = async () => {
-    if (!currentFile?.id) return alert('Open a file first.');
-    if (!undoTime) return alert('Enter an ISO timestamp (e.g., 2025-08-26T10:00:00Z)');
+    if (!currentFile?.id) return alert("Open a file first.");
+    if (!undoTime) return alert("Enter an ISO timestamp (e.g., 2025-08-26T10:00:00Z)");
     await drive.undoTo(currentFile.id, undoTime);
     const { file, content } = await drive.openDoc(currentFile.id);
     setCurrentFile(file);
@@ -205,40 +174,7 @@ function App() {
               <option value="OPENAI">OpenAI</option>
             </select>
           </div>
-
-          <div className="field switchRow">
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={useManualKey}
-                onChange={(e) => setUseManualKey(e.target.checked)}
-              />
-              <span className="slider" />
-            </label>
-            <span className="switchLabel">Use manual API key</span>
-          </div>
         </div>
-
-        {useManualKey && (
-          <div className="field">
-            <label>
-              {endpointKey === "OPENROUTER"
-                ? "OpenRouter API Key"
-                : "OpenAI API Key"}
-            </label>
-            <input
-              type="password"
-              onChange={handleKeyChange}
-              value={key}
-              className="input"
-              placeholder={
-                endpointKey === "OPENROUTER"
-                  ? "Enter your OpenRouter API Key"
-                  : "Enter your OpenAI API Key"
-              }
-            />
-          </div>
-        )}
 
         <div className="field">
           <label>Prompt</label>
@@ -288,7 +224,9 @@ function App() {
           <LayoutSelector option={option} setOptions={setOptions} />
 
           {!session?.authenticated ? (
-            <button className="button" onClick={onDriveLogin}>Sign in with Google Drive</button>
+            <button className="button" onClick={onDriveLogin}>
+              Sign in with Google Drive
+            </button>
           ) : (
             <>
               <button className="button" onClick={onNew}>New</button>
@@ -307,6 +245,7 @@ function App() {
           )}
         </div>
       </div>
+
       <Graph data={graphState} layout={option} />
 
       <div className="footer">

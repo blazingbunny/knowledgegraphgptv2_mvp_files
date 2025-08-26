@@ -11,13 +11,17 @@ const {
   BASE_URL = `http://localhost:${PORT}`,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
-  SESSION_SECRET = 'dev_secret'
+  SESSION_SECRET = 'dev_secret',
+  FRONTEND_URL = 'http://localhost:3000',
+  COOKIE_SECURE = 'false'
 } = process.env;
 
 const app = express();
+// If running behind a proxy (Cloudflare tunnel), trust it so secure cookies work
+app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: FRONTEND_URL,
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
@@ -26,8 +30,12 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { sameSite: 'lax' }
+  cookie: {
+    sameSite: 'lax',
+    secure: COOKIE_SECURE === 'true'
+  }
 }));
+
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -58,7 +66,7 @@ app.get('/auth/google',
 
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/auth/fail' }),
-  (req, res) => res.redirect('http://localhost:3000')
+  (req, res) => res.redirect(FRONTEND_URL)
 );
 
 app.get('/auth/fail', (_, res) => res.status(401).json({ ok: false, error: 'Auth failed' }));
@@ -70,6 +78,41 @@ app.post('/auth/logout', (req, res) => {
 
 app.get('/api/session', (req, res) => {
   res.json({ authenticated: !!req.user, user: req.user?.profile || null });
+});
+// ---- LLM proxy (OpenRouter) ----
+app.post('/api/llm/chat', ensureAuth, async (req, res) => {
+  try {
+    const { params } = req.body || {};
+    const key = process.env.OPENROUTER_API_KEY;
+    if (!key) return res.status(500).json({ ok: false, error: 'Server missing OPENROUTER_API_KEY' });
+
+    // Minimal safety: require messages array
+    if (!params?.messages) return res.status(400).json({ ok: false, error: 'messages required' });
+
+    // Default model if not provided
+    const body = {
+      model: params.model || 'openai/gpt-4o-mini',
+      ...params,
+    };
+
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'X-Title': 'KnowledgeGraph GPT'
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json({ ok: false, error: data?.error || 'OpenRouter error' });
+
+    const text = data?.choices?.[0]?.message?.content || '';
+    res.json({ ok: true, text, raw: data });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 function ensureAuth(req, res, next) {
