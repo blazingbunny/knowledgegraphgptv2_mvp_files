@@ -16,8 +16,15 @@ const {
   COOKIE_SECURE = 'false'
 } = process.env;
 
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  console.error('Missing Google OAuth envs: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+  process.exit(1);
+}
+if (!process.env.OPENROUTER_API_KEY) {
+  console.warn('Warning: OPENROUTER_API_KEY is not set; /api/llm/chat will 500.');
+}
+
 const app = express();
-// If running behind a proxy (Cloudflare tunnel), trust it so secure cookies work
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -35,7 +42,6 @@ app.use(session({
     secure: COOKIE_SECURE === 'true'
   }
 }));
-
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -79,17 +85,26 @@ app.post('/auth/logout', (req, res) => {
 app.get('/api/session', (req, res) => {
   res.json({ authenticated: !!req.user, user: req.user?.profile || null });
 });
-// ---- LLM proxy (OpenRouter) ----
+
+function ensureAuth(req, res, next) {
+  if (!req.user?.tokens?.refreshToken) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  return next();
+}
+
+function driveClient(req) {
+  const oAuth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, `${BASE_URL}/auth/google/callback`);
+  oAuth2Client.setCredentials({ refresh_token: req.user.tokens.refreshToken });
+  return google.drive({ version: 'v3', auth: oAuth2Client });
+}
+
+// LLM proxy (OpenRouter)
 app.post('/api/llm/chat', ensureAuth, async (req, res) => {
   try {
     const { params } = req.body || {};
     const key = process.env.OPENROUTER_API_KEY;
     if (!key) return res.status(500).json({ ok: false, error: 'Server missing OPENROUTER_API_KEY' });
-
-    // Minimal safety: require messages array
     if (!params?.messages) return res.status(400).json({ ok: false, error: 'messages required' });
 
-    // Default model if not provided
     const body = {
       model: params.model || 'openai/gpt-4o-mini',
       ...params,
@@ -115,17 +130,7 @@ app.post('/api/llm/chat', ensureAuth, async (req, res) => {
   }
 });
 
-function ensureAuth(req, res, next) {
-  if (!req.user?.tokens?.refreshToken) return res.status(401).json({ ok: false, error: 'Not authenticated' });
-  return next();
-}
-
-function driveClient(req) {
-  const oAuth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, `${BASE_URL}/auth/google/callback`);
-  oAuth2Client.setCredentials({ refresh_token: req.user.tokens.refreshToken });
-  return google.drive({ version: 'v3', auth: oAuth2Client });
-}
-
+// Drive JSON files (save/open/undo/save-as)
 app.get('/api/documents', ensureAuth, async (req, res) => {
   try {
     const drive = driveClient(req);

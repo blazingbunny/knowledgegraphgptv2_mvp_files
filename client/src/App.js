@@ -11,42 +11,34 @@ import {
   tuplesToGraph,
 } from "./util";
 import "./App.css";
-import {
-  DEFAULT_PARAMS,
-  LAYOUTS,
-  DEFAULT_ENDPOINT_KEY,
-} from "./constants";
-import GithubLogo from "./github-mark.png";
+import { DEFAULT_PARAMS, LAYOUTS, DEFAULT_ENDPOINT_KEY } from "./constants";
 import LayoutSelector from "./LayoutSelector";
 import { drive } from "./driveClient";
 
 function App() {
   const [prompt, setPrompt] = useState("");
-  const handlePromptChange = (e) => setPrompt(e.target.value);
-
   const [graphState, dispatch] = useReducer(graphReducer, initialState);
   const [option, setOptions] = useState(LAYOUTS.FCOSE);
   const [loading, setLoading] = useState(false);
-
-  // Endpoint select remains (future-proofing), even though server proxy is used.
   const [endpointKey, setEndpointKey] = useState(DEFAULT_ENDPOINT_KEY);
-  const handleEndpointChange = (e) => setEndpointKey(e.target.value);
-
   const [file, setFile] = useState("");
+
+  const handlePromptChange = (e) => setPrompt(e.target.value);
+  const handleEndpointChange = (e) => setEndpointKey(e.target.value);
 
   const handleJSONImport = (e) => {
     const fileReader = new FileReader();
     fileReader.readAsText(e.target.files[0], "UTF-8");
     fileReader.onload = (e2) => {
-      let data;
       try {
-        data = JSON.parse(e2.target.result);
+        const data = JSON.parse(e2.target.result);
+        setFile(null);
+        const result = restructureGraph(tuplesToGraph(cleanJSONTuples(data)));
+        dispatch({ type: ACTIONS.ADD_NODES_AND_EDGES, payload: result });
       } catch (err) {
         console.info(err);
+        alert("Invalid JSON");
       }
-      setFile(null);
-      const result = restructureGraph(tuplesToGraph(cleanJSONTuples(data)));
-      dispatch({ type: ACTIONS.ADD_NODES_AND_EDGES, payload: result });
     };
   };
 
@@ -156,91 +148,71 @@ function App() {
 
   return (
     <div className="App">
-      <header className="appHeader">
-        <h1>KnowledgeGraph GPT</h1>
-        <span className="subtle">Turn text into a knowledge graph.</span>
-      </header>
+      <div className="mainContainer">
+        <h1 className="title">KnowledgeGraph GPT</h1>
+        <p className="text">Turn text into a knowledge graph.</p>
 
-      <div className="mainContainer card">
-        <div className="row">
-          <div className="field">
-            <label>API Endpoint</label>
-            <select
-              className="select"
-              value={endpointKey}
-              onChange={handleEndpointChange}
-            >
-              <option value="OPENROUTER">OpenRouter (default)</option>
-              <option value="OPENAI">OpenAI</option>
-            </select>
-          </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={{ marginRight: 8, color: "#555" }}>API Endpoint:</label>
+          <select value={endpointKey} onChange={handleEndpointChange}>
+            <option value="OPENROUTER">OpenRouter (default)</option>
+            <option value="OPENAI">OpenAI</option>
+          </select>
         </div>
 
-        <div className="field">
-          <label>Prompt</label>
-          <input
-            type="text"
-            onChange={handlePromptChange}
-            value={prompt}
-            className="input"
-            placeholder="Enter your prompt"
-          />
-        </div>
+        <input
+          type="text"
+          onChange={handlePromptChange}
+          value={prompt}
+          className="promptInput"
+          placeholder="Enter your prompt"
+        />
 
-        <div className="actions">
-          <button
-            onClick={handleSubmit}
-            className="button primary"
-            disabled={loading}
-          >
-            {loading ? "Generating..." : "Generate"}
-          </button>
+        <button onClick={handleSubmit} className="submitButton" disabled={loading}>
+          {loading ? "Loading" : "Generate"}
+        </button>
+        <br />
 
+        <div className="buttonContainer">
           <button
-            className="button"
+            className="submitButton"
+            style={{ marginLeft: 5 }}
             onClick={() => dispatch({ type: ACTIONS.CLEAR_GRAPH })}
           >
             Clear
           </button>
-
           <button
-            className="button"
+            className="submitButton"
+            style={{ marginLeft: 5 }}
             onClick={() => exportData(graphState?.edges)}
             disabled={graphState?.edges?.length < 1}
           >
             Export JSON
           </button>
-
-          <label className="button fileButton">
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleJSONImport}
-              value={file}
-            />
+          <label className="custom-file-upload">
+            <input type="file" accept=".json" onChange={handleJSONImport} value={file} />
             Import JSON
           </label>
-
           <LayoutSelector option={option} setOptions={setOptions} />
 
           {!session?.authenticated ? (
-            <button className="button" onClick={onDriveLogin}>
+            <button className="submitButton" onClick={onDriveLogin}>
               Sign in with Google Drive
             </button>
           ) : (
             <>
-              <button className="button" onClick={onNew}>New</button>
-              <button className="button" onClick={onOpen}>Open (latest)</button>
-              <button className="button" onClick={onSave}>Save</button>
-              <button className="button" onClick={onSaveAs}>Save As</button>
+              <button className="submitButton" onClick={onNew}>New</button>
+              <button className="submitButton" onClick={onOpen}>Open (latest)</button>
+              <button className="submitButton" onClick={onSave}>Save</button>
+              <button className="submitButton" onClick={onSaveAs}>Save As</button>
               <input
-                className="input"
-                style={{ maxWidth: 260 }}
+                className="promptInput"
+                style={{ width: 320 }}
                 placeholder="ISO time for Undo (e.g., 2025-08-26T10:00:00Z)"
                 value={undoTime}
                 onChange={(e) => setUndoTime(e.target.value)}
               />
-              <button className="button" onClick={onUndoTo}>Undo to time</button>
+              <button className="submitButton" onClick={onUndoTo}>Undo to time</button>
             </>
           )}
         </div>
@@ -250,20 +222,6 @@ function App() {
 
       <div className="footer">
         <p>© {new Date().getFullYear()}</p>
-        <a
-          href="https://github.com/blazingbunny/KnowledgeGraphGPTv2"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="GitHub repository"
-        >
-          <img
-            src={GithubLogo}
-            alt="github"
-            width={20}
-            height={20}
-            className="github"
-          />
-        </a>
       </div>
     </div>
   );
