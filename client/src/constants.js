@@ -1,15 +1,31 @@
-// Defaults for the (optional) endpoint selector in App.js
-export const DEFAULT_ENDPOINT_KEY = "OPENROUTER";
-export const ENV_KEYS = { OPENROUTER: "", OPENAI: "" };
-
 // client/src/constants.js
+
+// --- Networking helpers (safe defaults for CRA fetches) ---
+export const requestOptions = {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+};
+
+// --- Model defaults (used by App to build the LLM request) ---
+export const DEFAULT_PARAMS = {
+  // This is only a hint; the server ultimately proxies to OpenRouter
+  model: "openai/gpt-4o-mini",
+  temperature: 0.3,
+  max_tokens: 800,
+  top_p: 1,
+  frequency_penalty: 0,
+  presence_penalty: 0,
+};
+
+// --- Layout names for the dropdown ---
 export const LAYOUTS = {
   Simple: "FCOSE",
   Hierarchical: "DAGRE",
   Circle: "AVSDF",
 };
 
-const ANIMATION_DURATION = 1000; // ms
+// --- Cytoscape layout options ---
+const ANIMATION_DURATION = 1000;
 const ANIMATION_EASING = "ease-in-sine";
 
 export const LAYOUT_OPTIONS = {
@@ -47,6 +63,7 @@ export const LAYOUT_OPTIONS = {
   },
 };
 
+// --- Pan/zoom widget options ---
 export const PANZOOM_OPTIONS = {
   zoomFactor: 0.05,
   zoomDelay: 45,
@@ -67,4 +84,12 @@ export const PANZOOM_OPTIONS = {
   zoomInIcon: "fa fa-plus",
   zoomOutIcon: "fa fa-minus",
   resetIcon: "fa fa-expand",
+};
+
+// --- Optional: endpoint selector stubs (keeps older App.js variants happy) ---
+export const DEFAULT_ENDPOINT_KEY = "OPENROUTER";
+export const ENV_KEYS = { OPENROUTER: "", OPENAI: "" };
+export const ENDPOINTS = {
+  OPENROUTER: "/api/llm/chat",
+  OPENAI: "/api/llm/chat",
 };
